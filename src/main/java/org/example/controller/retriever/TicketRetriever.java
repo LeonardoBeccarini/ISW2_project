@@ -1,4 +1,4 @@
-package org.example.retriever;
+package org.example.controller.retriever;
 
 import org.example.model.Ticket;
 import org.example.model.Version;
@@ -9,9 +9,10 @@ import org.json.JSONObject;
 import java.io.IOException;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
-import static org.example.Utils.JsonUtils.readJsonFromUrl;
+import static org.example.utils.JsonUtils.readJsonFromUrl;
 
 public class TicketRetriever {
     private VersionRetreiver versionRetreiver;
@@ -51,7 +52,7 @@ public class TicketRetriever {
                Version fixedVersion = versionRetreiver.getVersionAfter(ticket.getResolutionDate());
                ticket.setFixedVersion(fixedVersion);
                ticket.setOpeningVersion(openingVersion);
-               ticket.setInjectedVersion();
+               ticket.setInjectedVersionTemp();
                 // ticket is added only if FV>OV
                if(ticket.getFixedVersion() != null
                        && ticket.getOpeningVersion() != null &&
@@ -60,6 +61,18 @@ public class TicketRetriever {
                }
            }
        } while (i < total);
+        retrievedTickets.sort(Comparator.comparing(Ticket::getResolutionDate));
        return retrievedTickets;
    }
+
+   public List<Ticket> getTicketWithIV(List<Ticket> tickets) {
+        List<Ticket> ticketsWithIV = new ArrayList<>();
+        for (Ticket ticket : tickets) {
+            if(ticket.hasIV()){
+                ticketsWithIV.add(ticket);
+            }
+        }
+        return ticketsWithIV;
+   }
+
 }

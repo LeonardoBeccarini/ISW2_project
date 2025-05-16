@@ -22,6 +22,10 @@ public class Ticket {
         this.affectedVersions = affectedVersions;
     }
 
+
+    public boolean hasIV(){
+        return injectedVersion != null;
+    }
     public String getKey() {
         return key;
     }
@@ -58,11 +62,15 @@ public class Ticket {
         return affectedVersions;
     }
 
-    public void setInjectedVersion() {
-        if(!affectedVersions.isEmpty()) this.injectedVersion = affectedVersions.get(0);
+    public void setInjectedVersionTemp() {
+        if(!affectedVersions.isEmpty()) this.injectedVersion = affectedVersions.getFirst();
         else{
             this.injectedVersion = null;
         }
+    }
+
+    public void setInjectedVersion(Version injectedVersion) {
+        this.injectedVersion = injectedVersion;
     }
 
     public void setOpeningVersion(Version openingVersion) {
@@ -71,5 +79,9 @@ public class Ticket {
 
     public void setFixedVersion(Version fixedVersion) {
         this.fixedVersion = fixedVersion;
+    }
+
+    public void setAffectedVersions(List<Version> affectedVersions) {
+        this.affectedVersions = affectedVersions;
     }
 }

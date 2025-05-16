@@ -1,11 +1,10 @@
-package org.example.Utils;
+package org.example.utils;
 
 import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.*;
 import java.net.URL;
-import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 
 public class JsonUtils {

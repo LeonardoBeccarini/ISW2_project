@@ -1,11 +1,11 @@
-package org.example.retriever;
+package org.example.controller.retriever;
 
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
-import org.example.Utils.GitUtils;
+import org.example.utils.GitUtils;
 import org.example.model.Ticket;
 import org.example.model.Version;
 import org.jetbrains.annotations.NotNull;
@@ -82,8 +82,8 @@ public class CommitRetriever {
     }
 
     // for every ticket get its associated commits and check whether they are consistent
-    public void associateCommitToTicket(@NotNull List<Ticket> tickets) {
-        List<RevCommit> commits = this.commitList;
+    public void associateCommitToTicket(@NotNull List<Ticket> tickets) throws GitAPIException {
+        List<RevCommit> commits = this.retrieveAllCommits();
         for(Ticket ticket : tickets){
             List<RevCommit> associatedCommits = this.getAssociatedCommits(commits, ticket);
             List<RevCommit> consistentCommits = new ArrayList<>();
@@ -100,5 +100,21 @@ public class CommitRetriever {
         }
         //delete tickets without consistent commits associated
         tickets.removeIf(ticket -> ticket.getAssociatedCommits().isEmpty());
+    }
+
+    public void associateCommitToVersion() throws GitAPIException{
+        LocalDate lowerBound = LocalDate.of(1970,1,1); // Unix epoch as lower bound
+        List<Version> versions = versionRetriever.getVersionList();
+        for(Version version: versions){
+            LocalDate currentVersionDate = version.getDate();
+            for(RevCommit commit : this.retrieveAllCommits()){
+                LocalDate commitDate = GitUtils.castToLocalDate(commit.getCommitterIdent().getWhen());
+                if(commitDate.isBefore(currentVersionDate) || commitDate.isEqual(currentVersionDate) && commitDate.isBefore(lowerBound)){
+                    version.addCommit(commit);
+                }
+            }
+            lowerBound = currentVersionDate;
+        }
+        versionRetriever.deleteVersionWithoutCommits();
     }
 }
