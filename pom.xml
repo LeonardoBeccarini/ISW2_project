@@ -59,6 +59,13 @@
       <version>2.10.1</version>
     </dependency>
 
+    <!-- https://mvnrepository.com/artifact/com.github.javaparser/javaparser-core -->
+    <dependency>
+      <groupId>com.github.javaparser</groupId>
+      <artifactId>javaparser-core</artifactId>
+      <version>3.26.4</version>
+    </dependency>
+
     <dependency>
       <groupId>junit</groupId>
       <artifactId>junit</artifactId>
