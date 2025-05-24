@@ -15,6 +15,7 @@ import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
 import org.eclipse.jgit.treewalk.CanonicalTreeParser;
+
 import org.example.model.MethodIdentifier;
 import org.example.utils.GitUtils;
 import org.example.model.Ticket;
@@ -26,6 +27,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -130,8 +132,20 @@ public class GitRetriever {
 
     // from here method to retireve touched methods given a commit
 
-    public Set<MethodIdentifier> getTouchedMethodsInCommit(RevCommit commit) throws IOException {
-        Set<MethodIdentifier> touchedMethods = new HashSet<>();
+    public Set<MethodIdentifier> getTouchedMethods(List<Version> versionList) throws IOException, GitAPIException {
+            Set<MethodIdentifier> allTouched = new HashSet<>();
+            for (Version version : versionList) {
+                for (RevCommit commit : version.getCommitList()) {
+                    List<MethodIdentifier> methods = getTouchedMethodsInCommit(commit);
+                    allTouched.addAll(methods);
+                }
+            }
+            return allTouched;
+    }
+
+
+    private List<MethodIdentifier> getTouchedMethodsInCommit(RevCommit commit) throws IOException {
+        List<MethodIdentifier> touchedMethods = new ArrayList<>();
 
         try (var revWalk = new org.eclipse.jgit.revwalk.RevWalk(repository)) {
             RevCommit parent = commit.getParentCount() > 0 ? revWalk.parseCommit(commit.getParent(0).getId()) : null;
@@ -157,8 +171,6 @@ public class GitRetriever {
 
                         if (!newPath.endsWith(".java")) continue;
 
-                        System.out.println("DEBUG: Processing file: " + newPath);
-
                         String newContent = readFileAtCommit(commit, newPath);
                         String oldContent = parent != null ? readFileAtCommit(parent, oldPath) : "";
 
@@ -166,21 +178,35 @@ public class GitRetriever {
 
                         Set<MethodIdentifier> methods = findTouchedMethodsIncludingDeletedLines(newPath, newContent, oldContent, edits);
 
-                        System.out.println("DEBUG: Methods identified as changed:");
+                        // Per ogni MethodIdentifier trovato (senza version/commit), crea il nuovo MethodIdentifier con campi completi
                         for (MethodIdentifier method : methods) {
-                            System.out.println("    " + method.toString());
-                        }
+                            // Trova la versione più recente non successiva alla data del commit
+                            Version version = versionRetriever.getVersionList().stream()
+                                    .filter(v -> !v.getDate().isAfter(
+                                            commit.getCommitterIdent().getWhen()
+                                                    .toInstant()
+                                                    .atZone(ZoneId.systemDefault())
+                                                    .toLocalDate()))
+                                    .max(Comparator.comparing(Version::getDate))
+                                    .orElse(null);
 
-                        touchedMethods.addAll(methods);
+                            // Crea la lista commit con il commit corrente
+                            List<RevCommit> commitList = new ArrayList<>();
+                            commitList.add(commit);
+
+                            method.setVersion(version);
+                            method.setCommitList(commitList);
+                            touchedMethods.add(method);
+                        }
                     }
                 }
             }
         }
 
-        // Rimuove metodi duplicati ignorando " (parent)" nel filePath
-        touchedMethods = removeDuplicatesIgnoringParent(touchedMethods);
         return touchedMethods;
     }
+
+
 
     private Set<MethodIdentifier> findTouchedMethodsIncludingDeletedLines(String filePath,
                                                                           String newContent,
@@ -207,26 +233,28 @@ public class GitRetriever {
             }
         }
 
-        // Trova metodi nel file nuovo per linee modificate nel nuovo
-        Set<MethodIdentifier> touchedMethods = new HashSet<>(findMethodsWithChangedLines(filePath, newContent, newChangedLines));
-
-        // Trova metodi nel file vecchio per linee modificate nel vecchio
-        if (oldContent != null && !oldContent.isEmpty()) {
-            touchedMethods.addAll(findMethodsWithChangedLines(filePath + " (parent)", oldContent, oldChangedLines));
-        }
+        // Trova metodi nel file nuovo per linee modificate nel nuovo e vecchio con conteggio linee
+        Set<MethodIdentifier> touchedMethods = findMethodsWithAddedDeletedLines(
+                filePath, newContent, oldContent, newChangedLines, oldChangedLines);
 
         return touchedMethods;
     }
 
-    private Set<MethodIdentifier> findMethodsWithChangedLines(String filePath, String javaCode, Set<Integer> changedLines) {
+    private Set<MethodIdentifier> findMethodsWithAddedDeletedLines(
+            String filePath,
+            String newContent,
+            String oldContent,
+            Set<Integer> newChangedLines,
+            Set<Integer> oldChangedLines) {
+
         Set<MethodIdentifier> methodsTouched = new HashSet<>();
 
-        // Pre-suddivido il codice in righe (indice 1-based)
-        String[] lines = javaCode.split("\n");
+        String[] newLines = newContent.split("\n");
+        String[] oldLines = oldContent != null ? oldContent.split("\n") : new String[0];
 
         try {
             JavaParser parser = new JavaParser();
-            ParseResult<CompilationUnit> result = parser.parse(javaCode);
+            ParseResult<CompilationUnit> result = parser.parse(newContent);
             if (result.isSuccessful() && result.getResult().isPresent()) {
                 CompilationUnit cu = result.getResult().get();
 
@@ -243,27 +271,41 @@ public class GitRetriever {
                     int begin = range.begin.line;
                     int end = range.end.line;
 
-                    // Filtra linee modificate dentro il range del metodo
-                    Set<Integer> changedLinesInMethod = new HashSet<>();
-                    for (int line : changedLines) {
+                    // Count added lines inside method range
+                    Set<Integer> addedLinesInMethod = new HashSet<>();
+                    for (int line : newChangedLines) {
                         if (line >= begin && line <= end) {
-                            changedLinesInMethod.add(line);
+                            addedLinesInMethod.add(line);
                         }
                     }
 
-                    if (changedLinesInMethod.isEmpty()) {
+                    // Count deleted lines inside method range
+                    Set<Integer> deletedLinesInMethod = new HashSet<>();
+                    for (int line : oldChangedLines) {
+                        if (line >= begin && line <= end) {
+                            deletedLinesInMethod.add(line);
+                        }
+                    }
+
+                    if (addedLinesInMethod.isEmpty() && deletedLinesInMethod.isEmpty()) {
                         // Nessuna modifica nel metodo
                         continue;
                     }
 
                     // Controlla se tutte le linee modificate sono commenti o vuote
-                    if (allLinesAreCommentsOrWhitespace(changedLinesInMethod, lines)) {
+                    boolean allAddedComments = allLinesAreCommentsOrWhitespace(addedLinesInMethod, newLines);
+                    boolean allDeletedComments = allLinesAreCommentsOrWhitespace(deletedLinesInMethod, oldLines);
+
+                    if (allAddedComments && allDeletedComments) {
                         // Ignora metodo modificato se solo commenti
                         continue;
                     }
 
                     MethodIdentifier m = new MethodIdentifier(filePath, method.getNameAsString(), begin, end);
-                    System.out.println("DEBUG: Metodo '" + method.getNameAsString() + "' linee [" + begin + "-" + end + "] toccato da linee modificate " + changedLinesInMethod);
+                    // Set counts of lines added and deleted inside this method
+                    m.addAddedLineCount(addedLinesInMethod.size());
+                    m.addDeletedLineCount(deletedLinesInMethod.size());
+
                     methodsTouched.add(m);
                 }
             } else {
@@ -276,6 +318,7 @@ public class GitRetriever {
 
         return methodsTouched;
     }
+
 
 
     private boolean allLinesAreCommentsOrWhitespace(Set<Integer> linesToCheck, String[] fileLines) {
@@ -310,7 +353,7 @@ public class GitRetriever {
     }
 
 
-    private String readFileAtCommit(RevCommit commit, String path) throws IOException {
+    public String readFileAtCommit(RevCommit commit, String path) throws IOException {
         try (var reader = repository.newObjectReader()) {
             var treeWalk = org.eclipse.jgit.treewalk.TreeWalk.forPath(reader, path, commit.getTree());
             if (treeWalk == null) {
@@ -320,8 +363,9 @@ public class GitRetriever {
             var blobId = treeWalk.getObjectId(0);
             var loader = repository.open(blobId);
             byte[] bytes = loader.getBytes();
-            System.out.println("DEBUG: Read file '" + path + "' with size: " + bytes.length);
+         //   System.out.println("DEBUG: Read file '" + path + "' with size: " + bytes.length);
             return new String(bytes, StandardCharsets.UTF_8);
         }
     }
+
 }

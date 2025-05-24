@@ -75,7 +75,6 @@ public class VersionRetreiver {
         versionList.sort(Comparator.comparing(Version::getDate));
         removeOutOfOrderPatchVersions(versionList);
         setIndex();
-
     }
     private void setIndex(){
         int i = 0;
