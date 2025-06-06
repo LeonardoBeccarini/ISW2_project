@@ -4,7 +4,7 @@ import org.eclipse.jgit.api.errors.GitAPIException;
 import org.example.enums.ProjectsEnum;
 import org.example.model.Ticket;
 import org.example.model.Version;
-import org.example.utils.ColdStart;
+import org.example.utils.ColdStartUtils;
 import org.jetbrains.annotations.NotNull;
 import org.json.JSONException;
 
@@ -85,9 +85,9 @@ public class Proportion {
         for (ProjectsEnum proj : ProjectsEnum.values()) {
             double p;
             try {
-                List<Ticket> tickets = ColdStart.getTicketForColdStart(proj);
+                List<Ticket> tickets = ColdStartUtils.getTicketForColdStart(proj);
                 p = getProportion(tickets);
-                System.out.printf("ColdStart proportion value of %s is %.2f\n", proj, p);
+                System.out.printf("ColdStartUtils proportion value of %s is %.2f\n", proj, p);
             } catch (GitAPIException | IOException | URISyntaxException | JSONException e) {
                 throw new RuntimeException(e);
             }

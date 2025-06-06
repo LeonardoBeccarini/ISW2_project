@@ -12,6 +12,7 @@
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <pmd.version>7.13.0</pmd.version>
   </properties>
 
   <dependencies>
@@ -72,17 +73,33 @@
       <version>3.8.1</version>
       <scope>test</scope>
     </dependency>
+
     <dependency>
       <groupId>org.jetbrains</groupId>
       <artifactId>annotations</artifactId>
       <version>17.0.0</version>
       <scope>compile</scope>
     </dependency>
+
+    <!-- PMD Core: RuleSetFactory, LanguageRegistry, SourceCodeProcessor… -->
     <dependency>
-      <groupId>org.jetbrains</groupId>
-      <artifactId>annotations</artifactId>
-      <version>17.0.0</version>
-      <scope>compile</scope>
+      <groupId>net.sourceforge.pmd</groupId>
+      <artifactId>pmd-core</artifactId>
+      <version>${pmd.version}</version>
+    </dependency>
+
+    <!-- PMD Java: JavaLanguageModule, AST definitions… -->
+    <dependency>
+      <groupId>net.sourceforge.pmd</groupId>
+      <artifactId>pmd-java</artifactId>
+      <version>${pmd.version}</version>
+    </dependency>
+
+    <!-- https://mvnrepository.com/artifact/nz.ac.waikato.cms.weka/weka-stable -->
+    <dependency>
+      <groupId>nz.ac.waikato.cms.weka</groupId>
+      <artifactId>weka-stable</artifactId>
+      <version>3.8.0</version>
     </dependency>
 
   </dependencies>

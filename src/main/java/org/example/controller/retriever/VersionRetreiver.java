@@ -1,5 +1,6 @@
 package org.example.controller.retriever;
 
+import org.eclipse.jgit.revwalk.RevCommit;
 import org.example.utils.JsonUtils;
 import org.example.model.Version;
 import org.jetbrains.annotations.Nullable;
@@ -24,6 +25,17 @@ public class VersionRetreiver {
         } catch (IOException | JSONException e) {
             e.printStackTrace();
         }
+    }
+
+    public Version getVersionOfCommit(RevCommit commit){
+        for (Version version : versionList) {
+            for(RevCommit c: version.getCommitList()){
+                if(c.equals(commit)){
+                    return version;
+                }
+            }
+        }
+        return null;
     }
 
     public List<Version> getAffectedVersions(JSONArray versions) throws JSONException {
@@ -65,6 +77,7 @@ public class VersionRetreiver {
         setIndex();
     }
 
+
     private void getVersions(String projectName) throws IOException, JSONException {
         String url = "https://issues.apache.org/jira/rest/api/2/project/" + projectName;
         JSONObject json = JsonUtils.readJsonFromUrl(url);
@@ -72,8 +85,9 @@ public class VersionRetreiver {
 
         this.versionList = createArray(versions);
 
-        versionList.sort(Comparator.comparing(Version::getDate));
-        removeOutOfOrderPatchVersions(versionList);
+        this.versionList.sort(Comparator.comparing(Version::getDate));
+        this.versionList = versionList.subList(0, versionList.size()/2);// take half the releases to avoid snoring
+        removeOutOfOrderPatchVersions(this.versionList);
         setIndex();
     }
     private void setIndex(){
@@ -101,7 +115,7 @@ public class VersionRetreiver {
                     .filter(v2 -> v2.getName().equals(nextMinorZero))
                     .findFirst()
                     .ifPresent(v2 -> {
-                        // if the patch’s date is after the minor-zero’s date, drop the patch
+                        // if the versions’s date is after the minor-zero’s date, drop the version
                         if (v.getDate().isAfter(v2.getDate())) {
                             toRemove.add(v);
                         }

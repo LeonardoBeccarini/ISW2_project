@@ -8,17 +8,34 @@ public class Metrics {
 
     private boolean bugged;
    private int authors;
-   // private int numberOfAuthors;
+    // In Metrics.java
+    private int methodHistories;
 
 
     public Metrics(){
         authors = 0;
+        methodHistories = 0;
         stmtAdded = new LOCMetrics();
         churnMetrics = new LOCMetrics();
         stmtDeleted = new LOCMetrics();
-        complexityMetrics = new ComplexityMetrics(0,0, 0, 0, 0);
+        complexityMetrics = new ComplexityMetrics(0,0, 0, 0, 0,0);
         bugged = false;
 
+    }
+
+
+
+    public int getMethodHistories() {
+        return methodHistories;
+    }
+
+    public void setMethodHistories(int methodHistories) {
+        this.methodHistories = methodHistories;
+    }
+
+
+    public void setBugged(boolean bugged) {
+        this.bugged = bugged;
     }
 
     public void setAuthors(int authors) {
@@ -55,8 +72,15 @@ public class Metrics {
         return complexityMetrics;
     }
 
-    public boolean isBugged() {
+    public boolean getBugged() {
         return bugged;
+    }
+
+    public String isBugged(){
+        if(bugged){
+            return "true";
+        }
+        return "false";
     }
 
     public int getAuthors() {

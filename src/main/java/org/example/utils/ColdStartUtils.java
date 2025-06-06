@@ -12,9 +12,9 @@ import java.io.IOException;
 import java.net.URISyntaxException;
 import java.util.List;
 
-public class ColdStart {
+public class ColdStartUtils {
 
-    private ColdStart() {}
+    private ColdStartUtils() {}
 
     public static List<Ticket> getTicketForColdStart(ProjectsEnum project) throws GitAPIException, IOException, URISyntaxException, JSONException {
         String projectName = project.toString();

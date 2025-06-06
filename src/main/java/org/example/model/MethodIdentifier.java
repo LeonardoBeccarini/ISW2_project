@@ -12,8 +12,8 @@ public class MethodIdentifier {
     private Metrics metricsList;
     private final int startLine;  // linea iniziale del metodo nel file
     private final int endLine;    // linea finale del metodo nel file
-    private List<Integer> addedLinesList = new ArrayList<>();
-    private List<Integer> deletedLinesList = new ArrayList<>();
+    private List<Integer> addedLinesListCount;
+    private List<Integer> deletedLinesListCount;
 
 
 
@@ -27,9 +27,15 @@ public class MethodIdentifier {
         this.metricsList = metricsList;
         this.startLine = startLine;
         this.endLine = endLine;
+        this.addedLinesListCount = new ArrayList<>();
+        this.deletedLinesListCount = new ArrayList<>();
+        this.commitList       = new ArrayList<>();
     }
 
     // Costruttore minimale senza version, commitList e metricsList
+    public MethodIdentifier(String filePath, String methodName, Version version, int startLine, int endLine) {
+        this(filePath, methodName, version, null, null, startLine, endLine);
+    }
     public MethodIdentifier(String filePath, String methodName, int startLine, int endLine) {
         this(filePath, methodName, null, null, null, startLine, endLine);
     }
@@ -91,19 +97,19 @@ public class MethodIdentifier {
     }
 
     public void addAddedLineCount(int count) {
-        addedLinesList.add(count);
+        addedLinesListCount.add(count);
     }
 
     public void addDeletedLineCount(int count) {
-        deletedLinesList.add(count);
+        deletedLinesListCount.add(count);
     }
 
-    public List<Integer> getAddedLinesList() {
-        return addedLinesList;
+    public List<Integer> getAddedLinesListCount() {
+        return addedLinesListCount;
     }
 
-    public List<Integer> getDeletedLinesList() {
-        return deletedLinesList;
+    public List<Integer> getDeletedLinesListCount() {
+        return deletedLinesListCount;
     }
 
     @Override

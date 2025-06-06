@@ -8,6 +8,13 @@ import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.expr.ConditionalExpr;
 import com.github.javaparser.ast.stmt.*;
+import net.sourceforge.pmd.PMDConfiguration;
+import net.sourceforge.pmd.PmdAnalysis;
+import net.sourceforge.pmd.reporting.Report;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.example.controller.retriever.GitRetriever;
 import org.example.model.ComplexityMetrics;
@@ -17,24 +24,70 @@ import org.example.model.Metrics;
 
 import java.io.IOException;
 import java.util.*;
+import java.util.stream.Collectors;
 
 public class MetricsProcessor {
     private final GitRetriever gitRetriever;
-    private final Set<MethodIdentifier> touchedMethods;
+    private final List<MethodIdentifier> touchedMethods;
 
-    public MetricsProcessor(GitRetriever gitRetriever, Set<MethodIdentifier> touchedMethods) {
+    public MetricsProcessor(GitRetriever gitRetriever, List<MethodIdentifier> touchedMethods) {
         this.gitRetriever = gitRetriever;
         this.touchedMethods = touchedMethods;
     }
 
-    public void computeAllMetrics() throws IOException {
-
-        for (MethodIdentifier method : touchedMethods) {
-            computeLocAndChurnMetrics(method);
-            computeComplexityMetrics(method.getMetricsList(), method);
-            computeNumberOfAuthors(method.getMetricsList(), method );
+    public List<MethodIdentifier> computeAllMetrics() throws IOException {
+        List<MethodIdentifier> methodList = new ArrayList<>();
+        // 1) Group by signature
+        Map<String, MethodIdentifier> aggBySig = new LinkedHashMap<>();
+        // DEBUG
+        Map<String, Integer> counts = new HashMap<>();
+        for (MethodIdentifier touch : touchedMethods) {
+            String key = touch.getFilePath() + "|" + touch.getMethodName() + "|" + touch.getVersion() + "|" +
+                    touch.getStartLine() + "|" + touch.getEndLine();
+            counts.put(key, counts.getOrDefault(key, 0) + 1);
         }
+        counts.forEach((k,v) -> System.out.println("Method " + k + " appears " + v + " times in touchedMethods"));
+        // DEBUG
+        for (MethodIdentifier touch : touchedMethods) {
+            String key = touch.getFilePath() + "|" + touch.getMethodName() + "|" + touch.getVersion() + "|" +
+                    touch.getStartLine() + "|" + touch.getEndLine();
+
+            MethodIdentifier agg = aggBySig.computeIfAbsent(key, k -> new MethodIdentifier(
+                    touch.getFilePath(), touch.getMethodName(), touch.getVersion(),
+                    touch.getStartLine(), touch.getEndLine()
+            ));
+
+            // Merge added and deleted lines counts
+            for (int count : touch.getAddedLinesListCount()) {
+                agg.addAddedLineCount(count);  // Aggregate the added line counts
+            }
+
+            for (int count : touch.getDeletedLinesListCount()) {
+                agg.addDeletedLineCount(count);  // Aggregate the deleted line counts
+            }
+
+            // Merge commit lists
+            agg.getCommitList().addAll(touch.getCommitList());
+        }
+
+        // 2) Compute metrics on aggregated methods
+        for (MethodIdentifier method : aggBySig.values()) {
+            System.out.println("[DEBUG] Method: " + method);
+            System.out.println("[DEBUG] Added lines list: " + method.getAddedLinesListCount());
+            System.out.println("[DEBUG] Deleted lines list: " + method.getDeletedLinesListCount());
+            computeLocAndChurnMetrics(method);     // unchanged
+            computeComplexityMetrics(method.getMetricsList(), method);
+            computeNumberOfAuthors(method.getMetricsList(), method);
+
+            int methodHistories = method.getCommitList() == null ? 0 : method.getCommitList().size();
+            method.getMetricsList().setMethodHistories(methodHistories);
+
+            methodList.add(method);
+        }
+        return methodList;
     }
+
+
 
     public void computeLocAndChurnMetrics(MethodIdentifier method) {
         int sumLOC = 0;
@@ -47,8 +100,8 @@ public class MetricsProcessor {
         int maxDeletedLOC = 0;
         double avgDeletedLOC = 0;
 
-        List<Integer> addedLines = method.getAddedLinesList();
-        List<Integer> deletedLines = method.getDeletedLinesList();
+        List<Integer> addedLines = method.getAddedLinesListCount();
+        List<Integer> deletedLines = method.getDeletedLinesListCount();
 
         for (int i = 0; i < addedLines.size(); i++) {
             int currentLOC = addedLines.get(i);
@@ -64,11 +117,12 @@ public class MetricsProcessor {
             if (currentDeletedLOC > maxDeletedLOC) maxDeletedLOC = currentDeletedLOC;
         }
 
-        int revisionCount = addedLines.size();
-        if (revisionCount > 0) {
-            avgLOC = 1.0 * sumLOC / revisionCount;
-            avgChurn = 1.0 * churn / revisionCount;
-            avgDeletedLOC = 1.0 * sumOfTheDeletedLOC / revisionCount;
+        if(!addedLines.isEmpty()){
+            avgLOC = 1.0 * sumLOC / addedLines.size();
+            avgChurn = 1.0 * churn / addedLines.size();
+        }
+        if(!deletedLines.isEmpty()){
+            avgDeletedLOC = 1.0 * sumOfTheDeletedLOC / deletedLines.size();
         }
 
         LOCMetrics stmtAdded = new LOCMetrics();
@@ -120,13 +174,16 @@ public class MetricsProcessor {
                             int parameterCount = md.getParameters().size();
                             int nestingDepth = computeMaxNestingDepth(md.getBody().orElse(null));
                             int cognitiveComplexity = computeCognitiveComplexity(md);
-
+                            int codeSmells = computeCodeSmellsForMethod(md, latestCommit, method.getFilePath());
+                            int duplication = computeDuplication(md);
+                            
                             ComplexityMetrics cm = new ComplexityMetrics(
                                     cognitiveComplexity,
                                     statementCount,
                                     nestingDepth,
                                     parameterCount,
-                                    0 // placeholder for code smell
+                                    codeSmells,
+                                    duplication
                             );
 
                             metrics.setComplexityMetrics(cm);
@@ -138,19 +195,84 @@ public class MetricsProcessor {
         }
     }
 
-    private void computeNumberOfAuthors(Metrics metrics, MethodIdentifier touchedMethod) {
-        Set<String> authors = new HashSet<>();
-        List<RevCommit> commitList = touchedMethod.getCommitList();
-        if (commitList != null) {
-            for (RevCommit commit : commitList) {
-                String author = commit.getAuthorIdent().getEmailAddress();
-                authors.add(author);
-            }
+    private int computeDuplication(MethodDeclaration md) {
+        if (md.getBody().isEmpty()) {
+            return 0;
         }
-        metrics.setAuthors(authors.size());
 
+        List<Statement> statements = md.getBody().get().getStatements();
+
+        Map<String, Integer> stmtStringCounts = new HashMap<>();
+        int duplicationCount = 0;
+
+        for (Statement stmt : statements) {
+            String stmtStr = stmt.toString().trim();
+            if (stmtStr.isEmpty()) continue;
+
+            int count = stmtStringCounts.getOrDefault(stmtStr, 0);
+            if (count == 1) {
+                duplicationCount++;
+            }
+            stmtStringCounts.put(stmtStr, count + 1);
+        }
+        return duplicationCount;
     }
 
+
+    private int computeCodeSmellsForMethod(MethodDeclaration md,
+                                           RevCommit commit,
+                                           String filePath) throws IOException {
+        // 1) Recupera il sorgente del file al commit specificato
+        String fileContent = gitRetriever.readFileAtCommit(commit, filePath);
+
+        // 2) Scrive il sorgente in un file temporaneo per PMD
+        Path tmp = Files.createTempFile("pmd-src-", ".java");
+        Files.writeString(tmp, fileContent);
+
+        // 3) Configura PMD con i rule set desiderati e il file di input
+        PMDConfiguration config = new PMDConfiguration();
+        config.setRuleSets(List.of(
+                "category/java/codestyle.xml",
+                "category/java/design.xml"
+        ));
+        config.addInputPath(tmp);
+
+        // 4) Esegue l’analisi e raccoglie il report
+        try (PmdAnalysis pmd = PmdAnalysis.create(config)) {
+            Report report = pmd.performAnalysisAndCollectReport();
+
+            // 5) Conta le violation all’interno del range di righe del metodo
+            return (int) report.getViolations().stream()
+                    .filter(v -> {
+                        int b = v.getBeginLine(), e = v.getEndLine();
+                        return md.getRange()
+                                .map(r -> b >= r.begin.line && e <= r.end.line)
+                                .orElse(false);
+                    })
+                    .count();
+        } finally {
+            Files.deleteIfExists(tmp);
+        }
+    }
+
+
+
+    private void computeNumberOfAuthors(Metrics metrics, MethodIdentifier touchedMethod) {
+        List<RevCommit> commits = touchedMethod.getCommitList();
+        if (commits == null || commits.isEmpty()) {
+            System.out.println("No commits found for method " + touchedMethod);
+            metrics.setAuthors(0);
+            return;
+        }
+
+        Set<String> distinctEmails = commits.stream()
+                .map(c -> c.getAuthorIdent().getEmailAddress())
+                .collect(Collectors.toSet());
+
+        System.out.println("Distinct authors for method " + touchedMethod + ": " + distinctEmails);
+
+        metrics.setAuthors(distinctEmails.size());
+    }
 
     private int computeMaxNestingDepth(Node node) {
         return computeDepthRecursive(node, 0);
